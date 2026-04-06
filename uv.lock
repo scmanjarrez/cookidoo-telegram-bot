@@ -7,15 +7,6 @@ resolution-markers = [
 ]
 
 [[package]]
-name = "aiofiles"
-version = "25.1.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/41/c3/534eac40372d8ee36ef40df62ec129bee4fdb5ad9706e58a29be53b2c970/aiofiles-25.1.0.tar.gz", hash = "sha256:a8d728f0a29de45dc521f18f07297428d56992a742f0cd2701ba86e44d23d5b2", size = 46354, upload-time = "2025-10-09T20:51:04.358Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/bc/8a/340a1555ae33d7354dbca4faa54948d76d89a27ceef032c8c3bc661d003e/aiofiles-25.1.0-py3-none-any.whl", hash = "sha256:abe311e527c862958650f9438e859c1fa7568a141b22abcd015e120e86a85695", size = 14668, upload-time = "2025-10-09T20:51:03.174Z" },
-]
-
-[[package]]
 name = "aiohappyeyeballs"
 version = "2.6.1"
 source = { registry = "https://pypi.org/simple" }
@@ -293,25 +284,11 @@ wheels = [
 ]
 
 [[package]]
-name = "cookidoo-api"
-version = "0.17.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "aiofiles" },
-    { name = "aiohttp" },
-    { name = "isodate" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/68/13/ae8a7739e605d01df5b1b1ebf3fc8ae7cebce2357931397ea052b8366f21/cookidoo_api-0.17.0.tar.gz", hash = "sha256:d6a37d59f9c60d940b4dbe2963e356d30ab42033c45cd4b8b212a9ed261a4b6c", size = 34160, upload-time = "2026-04-01T19:50:11.181Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/f4/e6/b5b2e972051a19711d26521fa92e75aa142d38001094b1a5121f465e29e1/cookidoo_api-0.17.0-py3-none-any.whl", hash = "sha256:f3a9b6f796ed496ddc5c4912e714fb724b068fa7e7866d2818ea27be5d27d75a", size = 23055, upload-time = "2026-04-01T19:50:09.886Z" },
-]
-
-[[package]]
 name = "cookidoo-bot"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "cookidoo-api" },
+    { name = "aiohttp" },
     { name = "google-genai" },
     { name = "pydantic" },
     { name = "python-telegram-bot" },
@@ -325,7 +302,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "cookidoo-api", specifier = ">=0.17.0" },
+    { name = "aiohttp", specifier = ">=3.13.5" },
     { name = "google-genai", specifier = ">=1.70.0" },
     { name = "pydantic", specifier = ">=2.12.5" },
     { name = "python-telegram-bot", specifier = ">=22.7" },
@@ -571,15 +548,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/6f/6d/0703ccc57f3a7233505399edb88de3cbd678da106337b9fcde432b65ed60/idna-3.11.tar.gz", hash = "sha256:795dafcc9c04ed0c1fb032c2aa73654d8e8c5023a7df64a53f39190ada629902", size = 194582, upload-time = "2025-10-12T14:55:20.501Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/0e/61/66938bbb5fc52dbdf84594873d5b51fb1f7c7794e9c0f5bd885f30bc507b/idna-3.11-py3-none-any.whl", hash = "sha256:771a87f49d9defaf64091e6e6fe9c18d4833f140bd19464795bc32d966ca37ea", size = 71008, upload-time = "2025-10-12T14:55:18.883Z" },
-]
-
-[[package]]
-name = "isodate"
-version = "0.7.2"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/54/4d/e940025e2ce31a8ce1202635910747e5a87cc3a6a6bb2d00973375014749/isodate-0.7.2.tar.gz", hash = "sha256:4cd1aa0f43ca76f4a6c6c0292a85f40b35ec2e43e315b59f06e6d32171a953e6", size = 29705, upload-time = "2024-10-08T23:04:11.5Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/15/aa/0aca39a37d3c7eb941ba736ede56d689e7be91cab5d9ca846bde3999eba6/isodate-0.7.2-py3-none-any.whl", hash = "sha256:28009937d8031054830160fce6d409ed342816b543597cece116d966c6d99e15", size = 22320, upload-time = "2024-10-08T23:04:09.501Z" },
 ]
 
 [[package]]
