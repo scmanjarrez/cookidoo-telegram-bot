@@ -1,0 +1,40 @@
+# Cookidoo Bot — English strings
+# Keys are English identifiers. Copy this file and translate the values to add a new language.
+# Use Python str.format() placeholders: {variable_name}
+
+not_authorised = "Sorry, you are not authorised to use this bot."
+
+ask_url = "Please send me the Cookidoo recipe URL you want to work with."
+
+invalid_url = """That doesn't look like a valid Cookidoo recipe URL.
+Expected format: https://cookidoo.es/recipes/recipe/es-ES/r123456
+
+Please try again, or /cancel to abort."""
+
+url_received = "✅ Recipe ID: {recipe_id}\n\nWould you like to adapt the number of servings?"
+
+invalid_yes_no = "Please reply Yes or No using the buttons."
+
+ask_servings = "How many servings would you like?"
+
+invalid_servings = "Please send a valid positive whole number, or /cancel to abort."
+
+ask_translate = "Would you like to translate the recipe to {language}?"
+
+processing = "⏳ Working on it, please wait…"
+
+cancelled = "Operation cancelled."
+
+result_adapted_ingredients = "Adapted ingredients (by Gemini)"
+
+result_view_recipe = "View your custom recipe"
+
+error_cookidoo = "Cookidoo error: {error}"
+
+error_unexpected = "An unexpected error occurred: {error}"
+
+language_set = "✅ Language set to: {language}"
+
+language_unknown = "Language '{code}' is not available.\nAvailable languages: {available}"
+
+language_usage = "Usage: /language <code>\nAvailable languages: {available}"

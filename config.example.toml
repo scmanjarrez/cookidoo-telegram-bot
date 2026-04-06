@@ -1,0 +1,17 @@
+[cookidoo]
+username = "email"
+password = "password"
+# Base URL of the Cookidoo site for your account.
+# The locale (e.g. es-ES) and TTS display format are derived automatically
+# from the domain. Change this if your account is on a different market.
+# Examples: https://cookidoo.de  https://cookidoo.co.uk  https://cookidoo.fr
+cookidoo-site = "https://cookidoo.es"
+
+[telegram]
+token = "bot-token"
+admin-id = 1234567890
+
+[google]
+token = "api-key"
+model = "gemini-3.1-flash-lite-preview"
+thinking-level = "LOW"

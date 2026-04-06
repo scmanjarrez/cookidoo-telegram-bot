@@ -1,0 +1,53 @@
+[project]
+name = "cookidoo-bot"
+version = "0.1.0"
+description = "Telegram bot to adapt and translate Cookidoo recipes using Gemini AI."
+readme = "README.md"
+authors = [{ name = "scmanjarrez", email = "serchiman@gmail.com" }]
+requires-python = ">=3.12"
+dependencies = [
+  "cookidoo-api>=0.17.0",
+  "google-genai>=1.70.0",
+  "pydantic>=2.12.5",
+  "python-telegram-bot>=22.7",
+]
+
+[project.scripts]
+cookidoo-bot = "cookidoo_bot:main"
+
+[build-system]
+requires = ["uv_build>=0.11.3,<0.12.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 79
+cache-dir = "/tmp/.ruff_cache"
+
+[tool.ruff.lint]
+select = ["ALL"]
+fixable = ["ALL"]
+ignore = [ # recommended to disable with ruff formatter
+  "W191",   # tab-indentation
+  "E111",   # indentation-with-invalid-multiple
+  "E114",   # indentation-with-invalid-multiple-comment
+  "E117",   # over-indented
+  "D206",   # docstring-tab-indentation
+  "D300",   # triple-single-quotes
+  "Q000",   # bad-quotes-inline-string
+  "Q001",   # bad-quotes-multiline-string
+  "Q002",   # bad-quotes-docstring
+  "Q003",   # avoidable-escaped-quote
+  "Q004",   # unnecessary-escaped-quote
+  "COM812", # missing-trailing-comma
+  "COM819", # prohibited-trailing-comma
+  "ISC002", # multi-line-implicit-string-concatenation if used without ISC001 and flake8-implicit-str-concat.allow-multiline = false
+]
+
+[tool.ruff.lint.pycodestyle]
+max-line-length = 79
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["D", "ANN"]
