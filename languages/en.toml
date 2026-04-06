@@ -2,6 +2,10 @@
 # Keys are English identifiers. Copy this file and translate the values to add a new language.
 # Use Python str.format() placeholders: {variable_name}
 
+yes_label = "Yes"
+no_label = "No"
+language_name = "English"
+
 not_authorised = "Sorry, you are not authorised to use this bot."
 
 ask_url = "Please send me the Cookidoo recipe URL you want to work with."

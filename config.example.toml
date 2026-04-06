@@ -14,4 +14,4 @@ admin-id = 1234567890
 [google]
 token = "api-key"
 model = "gemini-3.1-flash-lite-preview"
-thinking-level = "LOW"
+thinking-level = "HIGH"

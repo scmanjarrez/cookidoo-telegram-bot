@@ -2,6 +2,10 @@
 # Claves en inglés. Copia este fichero y traduce los valores para añadir un nuevo idioma.
 # Usa marcadores Python str.format(): {nombre_variable}
 
+yes_label = "Sí"
+no_label = "No"
+language_name = "Español"
+
 not_authorised = "Lo siento, no tienes permiso para usar este bot."
 
 ask_url = "Por favor, envíame la URL de la receta de Cookidoo con la que quieres trabajar."

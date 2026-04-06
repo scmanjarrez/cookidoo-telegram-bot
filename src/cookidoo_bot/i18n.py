@@ -5,7 +5,10 @@ from pathlib import Path
 
 
 class Localizer:
+    """Loads per-language TOML files and formats translated strings."""
+
     def __init__(self, languages_path: Path) -> None:
+        """Initialize with the path to the TOML language files directory."""
         self._path = languages_path
         self._cache: dict[str, dict[str, str]] = {}
 
@@ -15,7 +18,7 @@ class Localizer:
         path = self._path / f"{lang}.toml"
         if not path.exists():
             return self._load("en") if lang != "en" else {}
-        with open(path, "rb") as f:
+        with path.open("rb") as f:
             data = tomllib.load(f)
         self._cache[lang] = data
         return data
@@ -26,6 +29,7 @@ class Localizer:
         return template.format(**kwargs) if kwargs else template
 
     def available(self) -> list[str]:
+        """Return sorted list of available language codes."""
         if not self._path.exists():
             return ["en"]
         return sorted(p.stem for p in self._path.glob("*.toml"))

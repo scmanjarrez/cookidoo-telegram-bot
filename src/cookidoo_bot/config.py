@@ -7,6 +7,8 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class CookidooConfig:
+    """Cookidoo account and site configuration."""
+
     username: str
     password: str
     site: str
@@ -14,12 +16,16 @@ class CookidooConfig:
 
 @dataclass(frozen=True)
 class TelegramConfig:
+    """Telegram bot configuration."""
+
     token: str
     admin_id: int
 
 
 @dataclass(frozen=True)
 class GoogleConfig:
+    """Google Gemini API configuration."""
+
     token: str
     model: str
     thinking_level: str
@@ -27,13 +33,16 @@ class GoogleConfig:
 
 @dataclass(frozen=True)
 class AppConfig:
+    """Complete application configuration."""
+
     cookidoo: CookidooConfig
     telegram: TelegramConfig
     google: GoogleConfig
 
 
 def load_config(path: Path) -> AppConfig:
-    with open(path, "rb") as f:
+    """Load and parse application config from a TOML file."""
+    with path.open("rb") as f:
         raw = tomllib.load(f)
     return AppConfig(
         cookidoo=CookidooConfig(

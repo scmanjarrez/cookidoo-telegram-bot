@@ -5,6 +5,7 @@ import re
 from dataclasses import dataclass
 from dataclasses import field as dc_field
 from html.parser import HTMLParser
+from typing import ClassVar
 from urllib.parse import parse_qs, quote, urlparse
 
 import aiohttp
@@ -27,6 +28,8 @@ def iso8601_to_seconds(s: str) -> int:
 
 @dataclass
 class OriginalTTS:
+    """Original TTS machine operation parsed from a Cookidoo edit-page step."""
+
     display_text: str  # inner text of <cr-tts>, e.g. "10 s/obr. 10"
     speed: str  # e.g. "10"
     time: int  # e.g. 10
@@ -36,6 +39,8 @@ class OriginalTTS:
 
 @dataclass
 class OriginalStep:
+    """A single recipe step with its list of TTS annotations."""
+
     text: str  # full step text (TTS display included)
     tts_list: list[OriginalTTS] = dc_field(default_factory=list)
 
@@ -44,6 +49,7 @@ class _StepHTMLParser(HTMLParser):
     """Parses <cr-step-text-field> elements from Cookidoo edit-page HTML."""
 
     def __init__(self) -> None:
+        """Initialize the HTML parser state."""
         super().__init__()
         self.steps: list[OriginalStep] = []
         self._in_step = False
@@ -70,7 +76,11 @@ class _StepHTMLParser(HTMLParser):
         self._text_parts = []
         self._tts_list = []
 
-    def handle_starttag(self, tag, attrs):
+    def handle_starttag(
+        self,
+        tag: str,
+        attrs: list[tuple[str, str | None]],
+    ) -> None:
         if tag == "cr-step-text-field":
             self._flush()
             self._in_step = True
@@ -102,7 +112,7 @@ class _StepHTMLParser(HTMLParser):
             self._in_tts = True
             self._tts_attrs = dict(attrs)
 
-    def handle_endtag(self, tag):
+    def handle_endtag(self, tag: str) -> None:
         if not self._in_step:
             return
 
@@ -127,7 +137,7 @@ class _StepHTMLParser(HTMLParser):
             self._in_tts = False
             self._tts_attrs = {}
 
-    def handle_data(self, data):
+    def handle_data(self, data: str) -> None:
         if not self._capturing or self._ignore_depth > 0:
             return
 
@@ -174,6 +184,9 @@ _TLD_TO_LOCALE: dict[str, str] = {
 }
 
 
+_HTTP_CLIENT_ERR = 400
+
+
 def site_to_locale(site: str) -> str:
     """Derive the Cookidoo locale string (e.g. 'es-ES') from a site URL."""
     hostname = urlparse(site).hostname or ""
@@ -188,7 +201,7 @@ def site_to_locale(site: str) -> str:
 class CookidooWebClient:
     """Thin async client for the Cookidoo web frontend API."""
 
-    _AJAX_HEADERS = {
+    _AJAX_HEADERS: ClassVar[dict[str, str]] = {
         "Accept": "application/json",
         "X-Requested-With": "xmlhttprequest",
     }
@@ -200,6 +213,7 @@ class CookidooWebClient:
         username: str,
         password: str,
     ) -> None:
+        """Initialize with a session, site URL, and login credentials."""
         self._session = session
         self._base = site.rstrip("/")
         self._locale = site_to_locale(site)
@@ -208,14 +222,17 @@ class CookidooWebClient:
 
     @property
     def locale(self) -> str:
+        """Return the Cookidoo locale code (e.g. 'es-ES')."""
         return self._locale
 
     async def login(self) -> None:
+        """Authenticate via Cookidoo's OAuth2 CIAM flow."""
         market = self._locale.split("-")[0]
         rd = f"/foundation/{self._locale}"
         start_url = (
             f"{self._base}/oauth2/start"
-            f"?market={market}&ui_locales={self._locale}&rd={quote(rd, safe='')}"
+            f"?market={market}&ui_locales={self._locale}"
+            f"&rd={quote(rd, safe='')}"
         )
         async with self._session.get(start_url, allow_redirects=True) as r:
             final_url = str(r.url)
@@ -238,23 +255,24 @@ class CookidooWebClient:
             if m:
                 request_id = m.group(1)
         if not request_id:
-            raise RuntimeError(
-                "Could not find requestId in Cookidoo OAuth2 login page"
-            )
+            msg = "Could not find requestId in Cookidoo OAuth2 login page"
+            raise RuntimeError(msg)
 
         post_data = (
             f"requestId={quote(request_id, safe='')}"
             f"&username={quote(self._username, safe='')}"
             f"&password={quote(self._password, safe='')}"
         )
+        _ciam = "https://ciam.prod.cookidoo.vorwerk-digital.com"
         async with self._session.post(
-            "https://ciam.prod.cookidoo.vorwerk-digital.com/login-srv/login",
+            f"{_ciam}/login-srv/login",
             data=post_data,
             headers={"Content-Type": "application/x-www-form-urlencoded"},
             allow_redirects=True,
         ) as r:
-            if r.status >= 400:
-                raise RuntimeError(f"Cookidoo login failed (HTTP {r.status})")
+            if r.status >= _HTTP_CLIENT_ERR:
+                msg = f"Cookidoo login failed (HTTP {r.status})"
+                raise RuntimeError(msg)
 
     async def add_custom_recipe(self, recipe_url: str) -> dict:
         """POST add-to-cookidoo and return the full response JSON."""
@@ -268,6 +286,7 @@ class CookidooWebClient:
             return await r.json(content_type=None)
 
     async def patch_recipe(self, recipe_id: str, payload: dict) -> None:
+        """PATCH a single recipe payload to the Cookidoo API."""
         url = f"{self._base}/created-recipes/{self._locale}/{recipe_id}"
         async with self._session.patch(
             url, headers=self._AJAX_HEADERS, json=payload
@@ -275,10 +294,11 @@ class CookidooWebClient:
             r.raise_for_status()
 
     def recipe_url(self, recipe_id: str) -> str:
+        """Return the Cookidoo URL for the given recipe ID."""
         return f"{self._base}/created-recipes/{self._locale}/{recipe_id}"
 
     async def get_original_steps(self, recipe_id: str) -> list[OriginalStep]:
-        """Fetch the edit page and parse step structure with TTS annotations."""
+        """Fetch the edit page and parse steps with TTS annotations."""
         url = (
             f"{self._base}/created-recipes/{self._locale}/{recipe_id}"
             f"/edit/ingredients-and-preparation-steps?active=steps"

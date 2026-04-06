@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 import aiohttp
 
-from .ai_service import RecipeAIService
+from .ai_service import AdaptRequest, RecipeAIService
 from .config import CookidooConfig
 from .cookidoo_client import (
     CookidooWebClient,
@@ -19,6 +19,8 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class RecipeResult:
+    """Result returned by a successful create-and-adapt operation."""
+
     recipe_id: str
     recipe_name: str
     recipe_url: str
@@ -27,13 +29,12 @@ class RecipeResult:
 
 
 class RecipeService:
-    """Application use-case: copy a Cookidoo recipe and optionally adapt
-    quantities and/or translate it via the AI service.
-    """
+    """Orchestrates Cookidoo recipe cloning and AI adaptation."""
 
     def __init__(
         self, cookidoo_cfg: CookidooConfig, ai: RecipeAIService
     ) -> None:
+        """Initialize with Cookidoo config and an AI service instance."""
         self._cookidoo_cfg = cookidoo_cfg
         self._ai = ai
 
@@ -42,8 +43,10 @@ class RecipeService:
         recipe_url: str,
         servings: int | None,
         ui_lang: str,
+        *,
         should_translate: bool,
     ) -> RecipeResult:
+        """Clone a Cookidoo recipe and optionally adapt/translate it."""
         translate_to = lang_display(ui_lang) if should_translate else None
         should_adapt = servings is not None or should_translate
 
@@ -72,9 +75,10 @@ class RecipeService:
                 # Fetch the step TTS structure from the edit page
                 try:
                     source_steps = await client.get_original_steps(recipe_id)
-                except Exception:
+                except Exception:  # noqa: BLE001
                     logger.warning(
-                        "Could not parse edit-page steps; TTS annotations will be skipped"
+                        "Could not parse edit-page steps;"
+                        " TTS annotations will be skipped"
                     )
                     source_steps = [
                         OriginalStep(text=s)
@@ -82,15 +86,21 @@ class RecipeService:
                     ]
 
                 adapted = await self._ai.adapt(
-                    recipe_name=rc.get("name") or "",
-                    orig_servings=orig_servings,
-                    target_servings=final_servings,
-                    total_time_s=iso8601_to_seconds(rc.get("totalTime") or ""),
-                    prep_time_s=iso8601_to_seconds(rc.get("prepTime") or ""),
-                    ingredients=rc.get("recipeIngredient") or [],
-                    source_steps=source_steps,
-                    servings_changed=servings is not None,
-                    translate_to=translate_to,
+                    AdaptRequest(
+                        recipe_name=rc.get("name") or "",
+                        orig_servings=orig_servings,
+                        target_servings=final_servings,
+                        total_time_s=iso8601_to_seconds(
+                            rc.get("totalTime") or ""
+                        ),
+                        prep_time_s=iso8601_to_seconds(
+                            rc.get("prepTime") or ""
+                        ),
+                        ingredients=rc.get("recipeIngredient") or [],
+                        source_steps=source_steps,
+                        servings_changed=servings is not None,
+                        translate_to=translate_to,
+                    )
                 )
                 for payload in RecipeAIService.to_cookidoo_payloads(
                     adapted, final_servings, source_steps, ui_lang

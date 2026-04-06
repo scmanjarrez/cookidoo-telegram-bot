@@ -58,6 +58,7 @@ async def _post_stop(application: Application) -> None:
 
 
 def main() -> None:
+    """Configure and start the Telegram bot."""
     cfg = load_config(_CONFIG_PATH)
 
     app: Application = (
