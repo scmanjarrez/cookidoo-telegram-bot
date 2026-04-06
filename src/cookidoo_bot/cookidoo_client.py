@@ -64,6 +64,8 @@ class RecipeSections:
     # One entry per ingredient <li> across ALL inner sections, in document
     # order.  None means the ingredient has no alternative.
     ingredient_alternatives: list[str | None] = dc_field(default_factory=list)
+    # Existing tips/hints text from the recipe page; None when absent.
+    original_hints: str | None = None
 
 
 # ─── HTML parsing ───────────────────────────────────────────────────────────
@@ -96,6 +98,39 @@ def _parse_tts_tag(tag: Tag) -> OriginalTTS:
     )
 
 
+def _parse_tips_section(tips_outer: Tag) -> str | None:
+    r"""Extract hints text from a tips-section Tag.
+
+    Handles two real-world structures:
+    - Original recipe URL: ``<rdp-tips>`` wrapping ``<ul>/<li>`` items
+      (one tip per ``<li>``).
+    - Created-recipe view: ``<div>`` wrapping a single
+      ``<p style="white-space: pre-wrap">`` with tips separated by ``\n\n``.
+    """
+    li_items = [
+        t
+        for t in tips_outer.find_all("li")
+        if isinstance(t, Tag) and t.get_text(strip=True)
+    ]
+    if li_items:
+        parts: list[str] = [
+            re.sub(r"\s+", " ", t.get_text(" ", strip=True)) for t in li_items
+        ]
+    else:
+        parts = []
+        for p_tag in tips_outer.find_all("p"):
+            if not isinstance(p_tag, Tag):
+                continue
+            raw = p_tag.get_text(strip=True)
+            if not raw:
+                continue
+            for raw_chunk in re.split(r"(?:\r?\n){2,}", raw):
+                norm = re.sub(r"[ \t]+", " ", raw_chunk.strip())
+                if norm:
+                    parts.append(norm)
+    return "\n\n".join(parts) if parts else None
+
+
 def _parse_recipe_sections(html: str) -> RecipeSections:
     """Parse ingredient/step sections and alternatives from a recipe page."""
     soup = BeautifulSoup(html, "html.parser")
@@ -126,11 +161,10 @@ def _parse_recipe_sections(html: str) -> RecipeSections:
     )
     ingr_outer: Tag | None = ingr_raw if isinstance(ingr_raw, Tag) else None
 
-    # Preparation/steps outer: try known ID patterns, then class fallback.
-    prep_raw = (
-        soup.find(id=re.compile(r"^preparation"))
-        or soup.find(id=re.compile(r"^steps"))
-        or soup.find(class_="preparation-steps-section")
+    # Preparation/steps outer: real pages use id="preparation-steps-section";
+    # class fallback covers unit-test HTML.
+    prep_raw = soup.find(id="preparation-steps-section") or soup.find(
+        class_="preparation-steps-section"
     )
     prep_outer: Tag | None = prep_raw if isinstance(prep_raw, Tag) else None
 
@@ -148,6 +182,13 @@ def _parse_recipe_sections(html: str) -> RecipeSections:
                 else None
             )
 
+    # Parse tips/hints: both real-page structures use id="tips-section".
+    tips_raw = soup.find(id="tips-section")
+    tips_outer: Tag | None = tips_raw if isinstance(tips_raw, Tag) else None
+    original_hints = (
+        _parse_tips_section(tips_outer) if tips_outer is not None else None
+    )
+
     return RecipeSections(
         ingredient_sections=(
             _inner_sections(ingr_outer) if ingr_outer is not None else []
@@ -156,6 +197,7 @@ def _parse_recipe_sections(html: str) -> RecipeSections:
             _inner_sections(prep_outer) if prep_outer is not None else []
         ),
         ingredient_alternatives=ingr_alts,
+        original_hints=original_hints,
     )
 
 

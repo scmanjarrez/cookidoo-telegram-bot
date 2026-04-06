@@ -164,6 +164,7 @@ class AdaptRequest:
     translate_to: str | None
     ingredient_section_names: list[str] = dc_field(default_factory=list)
     step_section_names: list[str] = dc_field(default_factory=list)
+    original_hints: str | None = None
 
 
 class RecipeAIService:
@@ -185,13 +186,31 @@ class RecipeAIService:
             )
         if req.translate_to:
             task_parts.append(
-                f"Translate everything (name, hints, ingredients,"
+                f"Translate everything (name, ingredients,"
                 f" instructions) to {req.translate_to}."
             )
 
         marked_steps = [
             _mark_tts(s.text, s.tts_list) for s in req.source_steps
         ]
+
+        hints_note = ""
+        if req.original_hints:
+            if req.translate_to:
+                hints_note = (
+                    f"\n\nEXISTING HINTS (translate to {req.translate_to}):"
+                    f"\n{req.original_hints}"
+                )
+            else:
+                hints_note = (
+                    "\n\nEXISTING HINTS (return exactly as provided):"
+                    f"\n{req.original_hints}"
+                )
+        else:
+            hints_note = (
+                "\n\nHINTS: Generate 1-3 concise cooking tips for this"
+                " recipe in the output language."
+            )
 
         sections_note = ""
         if req.ingredient_section_names:
@@ -264,6 +283,7 @@ class RecipeAIService:
             + "\n".join(req.ingredients)
             + "\n\nInstructions:\n"
             + "\n".join(f"{i + 1}. {s}" for i, s in enumerate(marked_steps))
+            + hints_note
             + sections_note
             + tts_note
             + annotation_guide

@@ -206,14 +206,18 @@ class RecipeService:
             )
             await client.login()
 
-            # Fetch section structure from the ORIGINAL recipe page using the
-            # authenticated session — section metadata is lost after cloning.
+            # Fetch section structure and hints from the original recipe
+            # URL before cloning — ingredients-section,
+            # preparation-steps-section, tips-section, and alternatives
+            # are all present on the original page.
             try:
                 sections = await client.get_recipe_sections(recipe_url)
-                logger.info(
-                    "Original sections: %d ingredient, %d step",
+                logger.debug(
+                    "Original recipe sections: %d ingredient, %d step,"
+                    " hints=%s",
                     len(sections.ingredient_sections),
                     len(sections.step_sections),
+                    "yes" if sections.original_hints else "no",
                 )
             except Exception:  # noqa: BLE001
                 logger.warning(
@@ -296,6 +300,7 @@ class RecipeService:
                         translate_to=translate_to,
                         ingredient_section_names=named_ingr_names,
                         step_section_names=named_step_names,
+                        original_hints=sections.original_hints,
                     )
                 )
 
