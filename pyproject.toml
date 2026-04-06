@@ -7,6 +7,7 @@ authors = [{ name = "scmanjarrez", email = "serchiman@gmail.com" }]
 requires-python = ">=3.12"
 dependencies = [
   "aiohttp>=3.13.5",
+  "beautifulsoup4>=4.14.3",
   "google-genai>=1.70.0",
   "pydantic>=2.12.5",
   "python-telegram-bot>=22.7",
@@ -50,10 +51,20 @@ max-line-length = 79
 convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["D", "ANN"]
+# tests: no docstrings, no annotations, allow private imports,
+# allow print() in diagnostic scripts, allow bare assert in pytest,
+# allow magic values in comparisons, allow blocking I/O in async diagnostic
+"tests/*" = [
+  "D",
+  "ANN",
+  "PLC2701",
+  "SLF001",
+  "T201",
+  "S101",
+  "INP001",
+  "PLR2004",
+  "ASYNC240",
+]
 
 [dependency-groups]
-dev = [
-    "mypy>=1.20.0",
-    "ruff>=0.15.9",
-]
+dev = ["mypy>=1.20.0", "pytest>=8.3", "ruff>=0.15.9"]

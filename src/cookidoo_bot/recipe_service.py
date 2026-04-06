@@ -10,11 +10,157 @@ from .config import CookidooConfig
 from .cookidoo_client import (
     CookidooWebClient,
     OriginalStep,
+    RecipeSection,
+    RecipeSections,
     iso8601_to_seconds,
 )
 from .i18n import lang_display
+from .models import Step
 
 logger = logging.getLogger(__name__)
+
+_SEP = "\u2500\u2500"  # ── — section separator prefix/suffix
+_SEP_PREFIX = f"{_SEP} "
+
+
+def _ingr_with_sections(
+    flat: list[str],
+    sections: list[RecipeSection],
+) -> list[str]:
+    """Interleave section-separator strings into the flat ingredient list.
+
+    Only applied when the summed item counts match the flat list length.
+    Sections without a name do not produce a separator line.
+    """
+    if not sections or sum(s.item_count for s in sections) != len(flat):
+        return flat
+    result: list[str] = []
+    idx = 0
+    for sec in sections:
+        if sec.name:
+            result.append(f"{_SEP} {sec.name} {_SEP}")
+        result.extend(flat[idx : idx + sec.item_count])
+        idx += sec.item_count
+    return result
+
+
+def _steps_with_sections(
+    flat: list[OriginalStep],
+    sections: list[RecipeSection],
+) -> list[OriginalStep]:
+    """Interleave separator OriginalStep entries into the flat step list.
+
+    Only applied when the summed item counts match the flat list length.
+    Sections without a name do not produce a separator step.
+    """
+    if not sections or sum(s.item_count for s in sections) != len(flat):
+        return flat
+    result: list[OriginalStep] = []
+    idx = 0
+    for sec in sections:
+        if sec.name:
+            result.append(OriginalStep(text=f"{_SEP} {sec.name} {_SEP}"))
+        result.extend(flat[idx : idx + sec.item_count])
+        idx += sec.item_count
+    return result
+
+
+def _extract_step_sections(
+    steps: list[OriginalStep],
+) -> tuple[list[OriginalStep], list[tuple[int, str]]]:
+    """Split section-separator steps out of a step list.
+
+    Returns (real_steps, insertions) where insertions is a list of
+    (before_index_in_real_steps, separator_text) pairs recording where
+    each separator should be re-inserted after Gemini processes the steps.
+    """
+    real: list[OriginalStep] = []
+    insertions: list[tuple[int, str]] = []
+    for step in steps:
+        if step.text.startswith(_SEP_PREFIX):
+            insertions.append((len(real), step.text))
+        else:
+            real.append(step)
+    return real, insertions
+
+
+def _reinsert_step_sections(
+    adapted_steps: list[Step],
+    insertions: list[tuple[int, str]],
+) -> list[Step]:
+    """Re-insert separator Step objects into Gemini-adapted steps.
+
+    Iterates in reverse so earlier insertions do not shift later indices.
+    """
+    result: list[Step] = list(adapted_steps)
+    for pos, text in reversed(insertions):
+        result.insert(pos, Step(text=text))
+    return result
+
+
+def _extract_ingr_sections(
+    ingredients: list[str],
+) -> tuple[list[str], list[tuple[int, str]]]:
+    """Split section-separator strings out of a flat ingredient list.
+
+    Returns (real_ingredients, insertions) following the same convention
+    as _extract_step_sections.
+    """
+    real: list[str] = []
+    insertions: list[tuple[int, str]] = []
+    for item in ingredients:
+        if item.startswith(_SEP_PREFIX):
+            insertions.append((len(real), item))
+        else:
+            real.append(item)
+    return real, insertions
+
+
+def _reinsert_ingr_sections(
+    adapted: list[str],
+    insertions: list[tuple[int, str]],
+) -> list[str]:
+    """Re-insert separator strings into Gemini-adapted ingredients.
+
+    Iterates in reverse so earlier insertions do not shift later indices.
+    """
+    result: list[str] = list(adapted)
+    for pos, text in reversed(insertions):
+        result.insert(pos, text)
+    return result
+
+
+def _apply_alternatives(
+    flat: list[str],
+    alternatives: list[str | None],
+) -> list[str]:
+    """Append alternative text to each ingredient that has one.
+
+    Only applied when the alternatives list length matches the flat list.
+    Format: "<main> / <alternative>"
+    """
+    if not alternatives or len(alternatives) != len(flat):
+        return flat
+    return [
+        f"{ing} / {alt}" if alt else ing
+        for ing, alt in zip(flat, alternatives, strict=False)
+    ]
+
+
+def _apply_translated_names(
+    insertions: list[tuple[int, str]],
+    translated: list[str],
+) -> list[tuple[int, str]]:
+    """Replace section names in separator tuples with translated versions.
+
+    Only applied when the translated list length matches the insertions list.
+    """
+    if not translated or len(translated) != len(insertions):
+        return insertions
+    return [
+        (pos, f"{_SEP} {name} {_SEP}")
+        for (pos, _), name in zip(insertions, translated, strict=False)
+    ]
 
 
 @dataclass
@@ -60,6 +206,25 @@ class RecipeService:
             )
             await client.login()
 
+            # Fetch section structure from the ORIGINAL recipe page using the
+            # authenticated session — section metadata is lost after cloning.
+            try:
+                sections = await client.get_recipe_sections(recipe_url)
+                logger.info(
+                    "Original sections: %d ingredient, %d step",
+                    len(sections.ingredient_sections),
+                    len(sections.step_sections),
+                )
+            except Exception:  # noqa: BLE001
+                logger.warning(
+                    "Could not parse original recipe sections;"
+                    " section separators will be skipped"
+                )
+                sections = RecipeSections(
+                    ingredient_sections=[],
+                    step_sections=[],
+                )
+
             data = await client.add_custom_recipe(recipe_url)
             recipe_id: str = data["recipeId"]
             rc: dict = data["recipeContent"]
@@ -72,7 +237,8 @@ class RecipeService:
             recipe_name: str = rc.get("name") or recipe_id
 
             if should_adapt:
-                # Fetch the step TTS structure from the edit page
+                # Fetch TTS steps from the copy's edit page (sections are
+                # already captured above from the original URL).
                 try:
                     source_steps = await client.get_original_steps(recipe_id)
                 except Exception:  # noqa: BLE001
@@ -85,6 +251,34 @@ class RecipeService:
                         for s in (rc.get("recipeInstructions") or [])
                     ]
 
+                structured_ingredients = _ingr_with_sections(
+                    _apply_alternatives(
+                        rc.get("recipeIngredient") or [],
+                        sections.ingredient_alternatives,
+                    ),
+                    sections.ingredient_sections,
+                )
+                clean_ingredients, ingr_insertions = _extract_ingr_sections(
+                    structured_ingredients
+                )
+
+                named_ingr_names = [
+                    s.name for s in sections.ingredient_sections if s.name
+                ]
+                named_step_names = [
+                    s.name for s in sections.step_sections if s.name
+                ]
+
+                # Inject section separators, then strip them out before
+                # sending to Gemini; they are re-inserted afterwards so
+                # the Cookidoo PATCH receives them at the right positions.
+                source_steps = _steps_with_sections(
+                    source_steps, sections.step_sections
+                )
+                clean_steps, step_insertions = _extract_step_sections(
+                    source_steps
+                )
+
                 adapted = await self._ai.adapt(
                     AdaptRequest(
                         recipe_name=rc.get("name") or "",
@@ -96,11 +290,28 @@ class RecipeService:
                         prep_time_s=iso8601_to_seconds(
                             rc.get("prepTime") or ""
                         ),
-                        ingredients=rc.get("recipeIngredient") or [],
-                        source_steps=source_steps,
+                        ingredients=clean_ingredients,
+                        source_steps=clean_steps,
                         servings_changed=servings is not None,
                         translate_to=translate_to,
+                        ingredient_section_names=named_ingr_names,
+                        step_section_names=named_step_names,
                     )
+                )
+
+                # Re-inject section separators at their original positions,
+                # using translated names from the Gemini response.
+                ingr_insertions = _apply_translated_names(
+                    ingr_insertions, adapted.ingredient_section_names
+                )
+                step_insertions = _apply_translated_names(
+                    step_insertions, adapted.step_section_names
+                )
+                adapted.ingredients = _reinsert_ingr_sections(
+                    adapted.ingredients, ingr_insertions
+                )
+                adapted.instructions = _reinsert_step_sections(
+                    adapted.instructions, step_insertions
                 )
                 for payload in RecipeAIService.to_cookidoo_payloads(
                     adapted, final_servings, source_steps, ui_lang

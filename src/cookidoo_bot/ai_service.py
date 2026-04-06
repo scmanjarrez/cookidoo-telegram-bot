@@ -2,6 +2,7 @@
 
 import re
 from dataclasses import dataclass
+from dataclasses import field as dc_field
 
 from google import genai
 
@@ -161,6 +162,8 @@ class AdaptRequest:
     source_steps: list[OriginalStep]
     servings_changed: bool
     translate_to: str | None
+    ingredient_section_names: list[str] = dc_field(default_factory=list)
+    step_section_names: list[str] = dc_field(default_factory=list)
 
 
 class RecipeAIService:
@@ -189,6 +192,20 @@ class RecipeAIService:
         marked_steps = [
             _mark_tts(s.text, s.tts_list) for s in req.source_steps
         ]
+
+        sections_note = ""
+        if req.ingredient_section_names:
+            sections_note += (
+                "\n\nIngredient section names"
+                " (translate to the target language if translating): "
+                + ", ".join(req.ingredient_section_names)
+            )
+        if req.step_section_names:
+            sections_note += (
+                "\n\nStep section names"
+                " (translate to the target language if translating): "
+                + ", ".join(req.step_section_names)
+            )
 
         tts_note = ""
         if any(s.tts_list for s in req.source_steps):
@@ -247,6 +264,7 @@ class RecipeAIService:
             + "\n".join(req.ingredients)
             + "\n\nInstructions:\n"
             + "\n".join(f"{i + 1}. {s}" for i, s in enumerate(marked_steps))
+            + sections_note
             + tts_note
             + annotation_guide
         )
@@ -265,7 +283,13 @@ class RecipeAIService:
         if response.text is None:
             msg = "Gemini returned an empty response"
             raise RuntimeError(msg)
-        return AdaptedRecipe.model_validate_json(response.text)
+        adapted = AdaptedRecipe.model_validate_json(response.text)
+        # Gemini sometimes emits \\n (escaped backslash-n) in JSON strings
+        # instead of an actual newline. Normalise before returning.
+        adapted.hints = adapted.hints.replace("\\n", "\n")
+        for step in adapted.instructions:
+            step.text = step.text.replace("\\n", "\n")
+        return adapted
 
     @staticmethod
     def to_cookidoo_payloads(

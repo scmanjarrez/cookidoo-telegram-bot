@@ -42,3 +42,8 @@ language_set = "✅ Language set to: {language}"
 language_unknown = "Language '{code}' is not available.\nAvailable languages: {available}"
 
 language_usage = "Usage: /language <code>\nAvailable languages: {available}"
+
+help_text = """/create — Clone a Cookidoo recipe into your account and adapt it with AI (change servings and/or translate).
+/language <code> — Change the UI and translation language (e.g. /language es).
+/help — Show this help message.
+/cancel — Cancel the current operation."""

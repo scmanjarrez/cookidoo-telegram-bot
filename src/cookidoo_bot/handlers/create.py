@@ -112,10 +112,6 @@ async def create_start(
     if update.message is None or update.effective_user is None:
         logger.warning("create_start: missing message or user")
         return ConversationHandler.END
-    admin_id: int = context.bot_data["config"].telegram.admin_id
-    if update.effective_user.id != admin_id:
-        await update.message.reply_text(_t(context, "not_authorised"))
-        return ConversationHandler.END
     await update.message.reply_text(_t(context, "ask_url"))
     return ASK_URL
 

@@ -19,7 +19,7 @@ class TelegramConfig:
     """Telegram bot configuration."""
 
     token: str
-    admin_id: int
+    allowed_ids: list[int]
 
 
 @dataclass(frozen=True)
@@ -52,7 +52,7 @@ def load_config(path: Path) -> AppConfig:
         ),
         telegram=TelegramConfig(
             token=raw["telegram"]["token"],
-            admin_id=raw["telegram"]["admin-id"],
+            allowed_ids=list(raw["telegram"]["allowed-ids"]),
         ),
         google=GoogleConfig(
             token=raw["google"]["token"],

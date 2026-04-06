@@ -1,3 +1,4 @@
+tests/
 config.toml
 .lang
 temp/

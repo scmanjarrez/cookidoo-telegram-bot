@@ -4,12 +4,19 @@ import logging
 from pathlib import Path
 
 from google import genai
-from telegram import BotCommand
-from telegram.ext import Application, ApplicationBuilder, CommandHandler
+from telegram import BotCommand, Update
+from telegram.ext import (
+    Application,
+    ApplicationBuilder,
+    ApplicationHandlerStop,
+    CommandHandler,
+    ContextTypes,
+    TypeHandler,
+)
 
 from .ai_service import RecipeAIService
 from .config import AppConfig, load_config
-from .handlers import build_conv_handler, set_language
+from .handlers import build_conv_handler, help_command, set_language
 from .i18n import Localizer
 from .recipe_service import RecipeService
 
@@ -27,8 +34,19 @@ _LANG_FILE = _BASE / ".lang"
 _COMMANDS = [
     BotCommand("create", "Adapt and/or translate a Cookidoo recipe"),
     BotCommand("language", "Change the bot UI language (e.g. /language es)"),
+    BotCommand("help", "Show available commands"),
     BotCommand("cancel", "Cancel the current operation"),
 ]
+
+
+async def _auth_gate(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Silently drop updates from users not in allowed_ids."""
+    user = update.effective_user
+    allowed_ids: list[int] = context.bot_data["config"].telegram.allowed_ids
+    if user is None or user.id not in allowed_ids:
+        raise ApplicationHandlerStop
 
 
 async def _post_init(application: Application) -> None:
@@ -70,6 +88,8 @@ def main() -> None:
     )
     app.bot_data["config"] = cfg
 
+    app.add_handler(TypeHandler(Update, _auth_gate), group=-1)
     app.add_handler(CommandHandler("language", set_language))
+    app.add_handler(CommandHandler("help", help_command))
     app.add_handler(build_conv_handler())
     app.run_polling()

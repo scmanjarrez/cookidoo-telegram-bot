@@ -57,20 +57,20 @@ cookidoo-site = "https://cookidoo.es"
 [telegram]
 # Token obtained from @BotFather
 token    = "123456:ABC-..."
-# Telegram user ID of the only user allowed to interact with the bot
-admin-id = 123456789
+# Telegram user IDs of the users allowed to interact with the bot
+allowed-ids = [123456789, 9876543210]
 
 [google]
 # API key from Google AI Studio
 token          = "AIza..."
 # Gemini model name
-model          = "gemini-3.1-flash-lite-preview"
+model          = "gemini-3-flash-preview"
 # Thinking budget: LOW | MEDIUM | HIGH
 thinking-level = "HIGH"
 ```
 
 > **`cookidoo-site`** is the base URL of the Cookidoo web frontend for your
-> account's market. The locale code (e.g. `es-ES`) and Thermomix step display
+> account's market. The Thermomix step display
 > strings (e.g. `10 s/vel 10` for Spanish, `10 s/St. 10` for German) are
 > derived automatically from the language set in the telegram bot.
 

@@ -9,7 +9,7 @@ cookidoo-site = "https://cookidoo.es"
 
 [telegram]
 token = "bot-token"
-admin-id = 1234567890
+allowed-ids = [1234567890, 9876543210]
 
 [google]
 token = "api-key"

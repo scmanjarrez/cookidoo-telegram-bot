@@ -1,14 +1,13 @@
 """Async wrapper around the Cookidoo web frontend API (cookie-based auth)."""
 
-import html as _html_lib
 import re
 from dataclasses import dataclass
 from dataclasses import field as dc_field
-from html.parser import HTMLParser
 from typing import ClassVar
-from urllib.parse import parse_qs, quote, urlparse
+from urllib.parse import parse_qs, urlparse
 
 import aiohttp
+from bs4 import BeautifulSoup, Comment, NavigableString, Tag
 
 
 def iso8601_to_seconds(s: str) -> int:
@@ -45,127 +44,165 @@ class OriginalStep:
     tts_list: list[OriginalTTS] = dc_field(default_factory=list)
 
 
-class _StepHTMLParser(HTMLParser):
-    """Parses <cr-step-text-field> elements from Cookidoo edit-page HTML."""
+# ─── Recipe section structure ──────────────────────────────────────────────
 
-    def __init__(self) -> None:
-        """Initialize the HTML parser state."""
-        super().__init__()
-        self.steps: list[OriginalStep] = []
-        self._in_step = False
-        self._capturing = False  # inside the main content <cr-text-field>
-        self._cf_depth = 0  # nesting depth inside cr-text-field
-        self._ignore_depth = 0  # depth within ignored subtrees
-        self._in_tts = False
-        self._tts_attrs: dict = {}
-        self._text_parts: list[str] = []
-        self._tts_list: list[OriginalTTS] = []
 
-    def _flush(self) -> None:
-        text = "".join(self._text_parts).strip()
-        if text:
-            self.steps.append(
-                OriginalStep(text=text, tts_list=list(self._tts_list))
-            )
-        self._in_step = False
-        self._capturing = False
-        self._cf_depth = 0
-        self._ignore_depth = 0
-        self._in_tts = False
-        self._tts_attrs = {}
-        self._text_parts = []
-        self._tts_list = []
+@dataclass
+class RecipeSection:
+    """One named section of ingredients or steps in a Cookidoo recipe."""
 
-    def handle_starttag(
-        self,
-        tag: str,
-        attrs: list[tuple[str, str | None]],
-    ) -> None:
-        if tag == "cr-step-text-field":
-            self._flush()
-            self._in_step = True
-            return
+    name: str | None  # None = unnamed / first section
+    item_count: int  # number of list items belonging to this section
 
-        if not self._in_step:
-            return
 
-        if self._ignore_depth > 0:
-            self._ignore_depth += 1
-            return
+@dataclass
+class RecipeSections:
+    """Ingredient and step section metadata parsed from a recipe page."""
 
-        if tag == "cr-text-field-actions":
-            self._ignore_depth += 1
-            return
+    ingredient_sections: list[RecipeSection]
+    step_sections: list[RecipeSection]
+    # One entry per ingredient <li> across ALL inner sections, in document
+    # order.  None means the ingredient has no alternative.
+    ingredient_alternatives: list[str | None] = dc_field(default_factory=list)
 
-        if tag == "cr-text-field":
-            if not self._capturing:
-                self._capturing = True
-                self._cf_depth = 1
-            else:
-                self._cf_depth += 1
-            return
 
-        if not self._capturing:
-            return
+# ─── HTML parsing ───────────────────────────────────────────────────────────
 
-        if tag == "cr-tts":
-            self._in_tts = True
-            self._tts_attrs = dict(attrs)
 
-    def handle_endtag(self, tag: str) -> None:
-        if not self._in_step:
-            return
+def _attr(tag: Tag, name: str) -> str | None:
+    """Return a single-string attribute from a BS4 Tag, or None."""
+    val = tag.get(name)
+    if val is None:
+        return None
+    return val if isinstance(val, str) else val[0]
 
-        if self._ignore_depth > 0:
-            self._ignore_depth -= 1
-            return
 
-        if tag == "cr-step-text-field":
-            self._flush()
-            return
+def _parse_tts_tag(tag: Tag) -> OriginalTTS:
+    """Build an OriginalTTS from a <cr-tts> BS4 Tag."""
+    temp_val = _attr(tag, "temperature")
+    return OriginalTTS(
+        display_text=tag.get_text(strip=True),
+        speed=_attr(tag, "speed") or "",
+        time=int(_attr(tag, "time") or 0),
+        time_unit=_attr(tag, "time-unit") or "s",
+        temperature=(
+            {
+                "value": temp_val,
+                "unit": _attr(tag, "temperature-unit") or "C",
+            }
+            if temp_val
+            else None
+        ),
+    )
 
-        if tag == "cr-text-field" and self._capturing:
-            self._cf_depth -= 1
-            if self._cf_depth == 0:
-                self._capturing = False
-            return
 
-        if not self._capturing:
-            return
+def _parse_recipe_sections(html: str) -> RecipeSections:
+    """Parse ingredient/step sections and alternatives from a recipe page."""
+    soup = BeautifulSoup(html, "html.parser")
 
-        if tag == "cr-tts":
-            self._in_tts = False
-            self._tts_attrs = {}
-
-    def handle_data(self, data: str) -> None:
-        if not self._capturing or self._ignore_depth > 0:
-            return
-
-        if self._in_tts:
-            stripped = data.strip()
-            if stripped:
-                temp_val = self._tts_attrs.get("temperature")
-                self._tts_list.append(
-                    OriginalTTS(
-                        display_text=stripped,
-                        speed=self._tts_attrs.get("speed", ""),
-                        time=int(self._tts_attrs.get("time", 0)),
-                        time_unit=self._tts_attrs.get("time-unit", "s"),
-                        temperature=(
-                            {
-                                "value": temp_val,
-                                "unit": self._tts_attrs.get(
-                                    "temperature-unit", "C"
-                                ),
-                            }
-                            if temp_val
-                            else None
-                        ),
-                    )
+    def _inner_sections(outer: Tag) -> list[RecipeSection]:
+        result: list[RecipeSection] = []
+        for inner in outer.find_all(class_="recipe-content__inner-section"):
+            if not isinstance(inner, Tag):
+                continue
+            heading = inner.find(["h1", "h2", "h3", "h4", "h5", "h6"])
+            name = (
+                heading.get_text(strip=True)
+                if isinstance(heading, Tag)
+                else None
+            ) or None
+            result.append(
+                RecipeSection(
+                    name=name,
+                    item_count=len(inner.find_all("li")),
                 )
-            self._text_parts.append(data)  # TTS text is part of the step text
-        else:
-            self._text_parts.append(_html_lib.unescape(data))
+            )
+        return result
+
+    # Ingredients outer: real pages use id="ingredients-section"; the
+    # class fallback covers unit-test HTML.
+    ingr_raw = soup.find(id="ingredients-section") or soup.find(
+        class_="ingredients-section"
+    )
+    ingr_outer: Tag | None = ingr_raw if isinstance(ingr_raw, Tag) else None
+
+    # Preparation/steps outer: try known ID patterns, then class fallback.
+    prep_raw = (
+        soup.find(id=re.compile(r"^preparation"))
+        or soup.find(id=re.compile(r"^steps"))
+        or soup.find(class_="preparation-steps-section")
+    )
+    prep_outer: Tag | None = prep_raw if isinstance(prep_raw, Tag) else None
+
+    # Collect ingredient alternatives in document order — one entry per
+    # <li> inside the ingredient section, None when absent.
+    ingr_alts: list[str | None] = []
+    if ingr_outer is not None:
+        for li in ingr_outer.find_all("li"):
+            if not isinstance(li, Tag):
+                continue
+            alt = li.find(class_="recipe-ingredient__alternative")
+            ingr_alts.append(
+                re.sub(r"\s+", " ", alt.get_text(" ", strip=True)) or None
+                if isinstance(alt, Tag)
+                else None
+            )
+
+    return RecipeSections(
+        ingredient_sections=(
+            _inner_sections(ingr_outer) if ingr_outer is not None else []
+        ),
+        step_sections=(
+            _inner_sections(prep_outer) if prep_outer is not None else []
+        ),
+        ingredient_alternatives=ingr_alts,
+    )
+
+
+def _collect_step_text(
+    text_field: Tag,
+) -> tuple[list[str], list[OriginalTTS]]:
+    """Walk a cr-text-field Tag and collect plain text and TTS entries."""
+    text_parts: list[str] = []
+    tts_list: list[OriginalTTS] = []
+    for node in text_field.descendants:
+        if isinstance(node, Tag) and node.name == "cr-tts":
+            tts_list.append(_parse_tts_tag(node))
+        elif isinstance(node, NavigableString) and not isinstance(
+            node, Comment
+        ):
+            text_parts.append(str(node))
+    return text_parts, tts_list
+
+
+def _parse_edit_steps(html: str) -> list[OriginalStep]:
+    """Parse <cr-step-text-field> elements from a Cookidoo edit-page."""
+    soup = BeautifulSoup(html, "html.parser")
+    steps: list[OriginalStep] = []
+
+    for step_field in soup.find_all("cr-step-text-field"):
+        if not isinstance(step_field, Tag):
+            continue
+        # Content lives in the first cr-text-field NOT inside
+        # cr-text-field-actions (which holds the UI action buttons).
+        text_field: Tag | None = next(
+            (
+                tf
+                for tf in step_field.find_all("cr-text-field")
+                if isinstance(tf, Tag)
+                and tf.find_parent("cr-text-field-actions") is None
+            ),
+            None,
+        )
+        if text_field is None:
+            continue
+
+        text_parts, tts_list = _collect_step_text(text_field)
+        text = "".join(text_parts).strip()
+        if text:
+            steps.append(OriginalStep(text=text, tts_list=tts_list))
+
+    return steps
 
 
 _TLD_TO_LOCALE: dict[str, str] = {
@@ -228,46 +265,40 @@ class CookidooWebClient:
     async def login(self) -> None:
         """Authenticate via Cookidoo's OAuth2 CIAM flow."""
         market = self._locale.split("-")[0]
-        rd = f"/foundation/{self._locale}"
-        start_url = (
-            f"{self._base}/oauth2/start"
-            f"?market={market}&ui_locales={self._locale}"
-            f"&rd={quote(rd, safe='')}"
-        )
-        async with self._session.get(start_url, allow_redirects=True) as r:
+        async with self._session.get(
+            f"{self._base}/oauth2/start",
+            params={
+                "market": market,
+                "ui_locales": self._locale,
+                "rd": f"/foundation/{self._locale}",
+            },
+            allow_redirects=True,
+        ) as r:
             final_url = str(r.url)
             html = await r.text()
 
         qs = parse_qs(urlparse(final_url).query)
         request_id: str | None = next(iter(qs.get("requestId", [])), None)
         if not request_id:
-            m = re.search(
-                r'name=["\']requestId["\'].+?value=["\']([^"\']+)',
-                html,
-                re.DOTALL,
+            inp = BeautifulSoup(html, "html.parser").find(
+                "input", {"name": "requestId"}
             )
-            if not m:
-                m = re.search(
-                    r'value=["\']([^"\']+)["\'].+?name=["\']requestId',
-                    html,
-                    re.DOTALL,
-                )
-            if m:
-                request_id = m.group(1)
+            if isinstance(inp, Tag):
+                raw = inp.get("value")
+                if raw:
+                    request_id = raw if isinstance(raw, str) else raw[0]
         if not request_id:
             msg = "Could not find requestId in Cookidoo OAuth2 login page"
             raise RuntimeError(msg)
 
-        post_data = (
-            f"requestId={quote(request_id, safe='')}"
-            f"&username={quote(self._username, safe='')}"
-            f"&password={quote(self._password, safe='')}"
-        )
+        form = aiohttp.FormData()
+        form.add_field("requestId", request_id)
+        form.add_field("username", self._username)
+        form.add_field("password", self._password)
         _ciam = "https://ciam.prod.cookidoo.vorwerk-digital.com"
         async with self._session.post(
             f"{_ciam}/login-srv/login",
-            data=post_data,
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            data=form,
             allow_redirects=True,
         ) as r:
             if r.status >= _HTTP_CLIENT_ERR:
@@ -298,14 +329,27 @@ class CookidooWebClient:
         return f"{self._base}/created-recipes/{self._locale}/{recipe_id}"
 
     async def get_original_steps(self, recipe_id: str) -> list[OriginalStep]:
-        """Fetch the edit page and parse steps with TTS annotations."""
+        """Fetch the edit page and parse the step list with TTS annotations.
+
+        Section structure is NOT available on the edit page and must be
+        fetched separately via get_recipe_sections from the original URL.
+        """
         url = (
             f"{self._base}/created-recipes/{self._locale}/{recipe_id}"
-            f"/edit/ingredients-and-preparation-steps?active=steps"
+            f"/edit/ingredients-and-preparation-steps"
         )
-        async with self._session.get(url, allow_redirects=True) as r:
+        async with self._session.get(
+            url,
+            params={"active": "steps"},
+            allow_redirects=True,
+        ) as r:
             r.raise_for_status()
             html = await r.text()
-        parser = _StepHTMLParser()
-        parser.feed(html)
-        return parser.steps
+        return _parse_edit_steps(html)
+
+    async def get_recipe_sections(self, recipe_url: str) -> RecipeSections:
+        """Fetch the original recipe page and parse its section structure."""
+        async with self._session.get(recipe_url, allow_redirects=True) as r:
+            r.raise_for_status()
+            html = await r.text()
+        return _parse_recipe_sections(html)

@@ -480,3 +480,20 @@ class AdaptedRecipe(BaseModel):
     instructions: list[Step] = Field(
         description="Preparation steps as structured Step objects"
     )
+    ingredient_section_names: list[str] = Field(
+        default=[],
+        description=(
+            "Translated names for ingredient sections, in the same order "
+            "as they appear in the recipe. Only include named sections "
+            "(omit nameless ones). Leave empty if there are no ingredient "
+            "sections."
+        ),
+    )
+    step_section_names: list[str] = Field(
+        default=[],
+        description=(
+            "Translated names for step/preparation sections, in the same "
+            "order as they appear in the recipe. Only include named sections "
+            "(omit nameless ones). Leave empty if there are no step sections."
+        ),
+    )
